@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>まじ定積分</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f7fb; --card: #ffffff; --text: #1d2433; --sub: #5b6477; --line: #d5d9e4;
+    --accent: #3b5bdb; --accent-text: #ffffff;
+    --ok-bg: #d3f5d3; --ok-line: #2f9e44; --ng-bg: #fbd5d5; --ng-line: #e03131;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151c; --card: #1c212c; --text: #e8ebf3; --sub: #9aa3b8; --line: #323a4b;
+      --accent: #748ffc; --accent-text: #11141b;
+      --ok-bg: #1f4a2b; --ok-line: #51cf66; --ng-bg: #552528; --ng-line: #ff6b6b;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif; }
+  .screen { max-width: 760px; margin: 0 auto; padding: 16px; min-height: 100vh; }
+  .screen[hidden] { display: none; }
+  .center { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; }
+  h1 { font-size: clamp(2.4rem, 11vw, 3.8rem); margin: 0 0 24px; }
+  h2 { font-size: 1.4rem; margin: 0 0 12px; }
+  .btn { font: inherit; font-size: 1.25rem; padding: 14px 20px; min-width: 220px; border-radius: 12px;
+    border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 700; }
+  .error { color: var(--ng-line); max-width: 480px; font-size: .95rem; }
+
+  .topbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .topbar .btn { min-width: 0; font-size: 1.05rem; padding: 10px 16px; }
+  .score { font-size: 1.15rem; font-weight: 700; text-align: right; }
+  .score small { color: var(--sub); font-weight: 400; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-bottom: 14px; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+  .qno { color: var(--sub); font-size: .9rem; margin-bottom: 6px; }
+  .problem { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px 12px; font-size: 1.35rem; overflow-x: auto; text-align: center; margin-bottom: 14px; }
+  .problem .katex-display { margin: 0; }
+  .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 520px) { .choices { grid-template-columns: 1fr; } }
+  .choice { font: inherit; background: var(--card); color: var(--text); border: 2px solid var(--line);
+    border-radius: 12px; min-height: 84px; padding: 8px; display: flex; align-items: center;
+    justify-content: center; cursor: pointer; font-size: 1.15rem; overflow-x: auto; }
+  .choice.correct { background: var(--ok-bg); border-color: var(--ok-line); }
+  .choice.wrong { background: var(--ng-bg); border-color: var(--ng-line); }
+  .plain { white-space: pre; font-family: ui-monospace, Menlo, Consolas, monospace; text-align: left; }
+  #feedback { min-height: 2em; margin: 14px 0 6px; font-size: 1.25rem; font-weight: 700; text-align: center; }
+  #feedback.ok { color: var(--ok-line); } #feedback.ng { color: var(--ng-line); }
+  #next { display: block; margin: 0 auto; }
+  #next[hidden] { display: none; }
+</style>
+</head>
+<body>
+
+<!-- ホーム -->
+<section id="screen-home" class="screen center">
+  <h1>まじ定積分</h1>
+  <button class="btn primary" id="start">スタート</button>
+  <div id="load-error" class="error" hidden></div>
+</section>
+
+<!-- 難易度選択 -->
+<section id="screen-level" class="screen center" hidden>
+  <h2>難易度を選んでください</h2>
+  <div id="level-buttons" class="center"></div>
+</section>
+
+<!-- ゴール点数選択 -->
+<section id="screen-goal" class="screen center" hidden>
+  <h2>ゴール点数を選んでください</h2>
+  <div id="goal-buttons" class="center"></div>
+</section>
+
+<!-- ゲーム -->
+<section id="screen-game" class="screen" hidden>
+  <div class="topbar">
+    <button class="btn" id="stop">止める</button>
+    <div class="score"><span id="score"></span> <small id="goal"></small></div>
+  </div>
+  <div class="bar"><div id="progress"></div></div>
+  <div class="qno" id="qno"></div>
+  <div class="problem" id="problem"></div>
+  <div class="choices" id="choices"></div>
+  <div id="feedback"></div>
+  <button class="btn primary" id="next" hidden>次へ</button>
+</section>
+
+<script>
+"use strict";
+const POINT = 5;
+const CORRECT_DELAY_MS = 700;
+const LEVELS = [["低", "low"], ["中", "mid"], ["高", "high"]];
+const GOALS = [20, 50, 100];
+
+const $ = (id) => document.getElementById(id);
+let byLevel = null;       // {low:[...], mid:[...], high:[...]}
+let levelKey = null;
+let session = null;
+let current = null;       // 出題中の問題
+let choices = [];         // [{tex, text, ok}]
+let locked = false;
+let timer = null;
+
+// ---------- 画面切り替え ----------
+function show(name) {
+  for (const s of document.querySelectorAll(".screen")) s.hidden = (s.id !== "screen-" + name);
+  window.scrollTo(0, 0);
+}
+
+// ---------- データ読み込み ----------
+async function loadProblems() {
+  if (byLevel) return byLevel;
+  const res = await fetch("problems.json");
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  const g = { low: [], mid: [], high: [] };
+  for (const p of data) g[p.level].push(p);
+  byLevel = g;
+  return g;
+}
+
+// ---------- ゲームロジック(画面に依存しない) ----------
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function newSession(problems, goal) {
+  return { problems, goal, score: 0, count: 0, queue: [], last: null };
+}
+// 問題は使い切るまで重複しない。使い切ったらシャッフルし直す。
+function nextProblem(s) {
+  if (s.queue.length === 0) {
+    s.queue = shuffle(s.problems.slice());
+    const n = s.queue.length;
+    if (n > 1 && s.queue[n - 1] === s.last) [s.queue[0], s.queue[n - 1]] = [s.queue[n - 1], s.queue[0]];
+  }
+  s.last = s.queue.pop();
+  s.count++;
+  return s.last;
+}
+function applyAnswer(s, ok) {
+  s.score += ok ? POINT : -POINT;
+  return s.score >= s.goal;   // ゴール到達なら true
+}
+
+// ---------- 数式表示(KaTeX。読み込めない場合は文字表示) ----------
+function typeset(el, tex, fallback, display) {
+  el.classList.remove("plain");
+  el.textContent = "";
+  if (window.katex) {
+    try { katex.render(tex, el, { displayMode: display, throwOnError: false }); return; } catch (e) {}
+  }
+  el.textContent = fallback;
+  el.classList.add("plain");
+}
+
+// ---------- 画面: ホーム/難易度/ゴール ----------
+$("start").addEventListener("click", async () => {
+  const err = $("load-error");
+  err.hidden = true;
+  try {
+    await loadProblems();
+    show("level");
+  } catch (e) {
+    err.textContent = "problems.json を読み込めませんでした。GitHub Pages などのサーバー経由で開いてください" +
+                      "(index.html を直接ファイルとして開くと読み込めません)。";
+    err.hidden = false;
+  }
+});
+
+for (const [label, key] of LEVELS) {
+  const b = document.createElement("button");
+  b.className = "btn"; b.textContent = label;
+  b.addEventListener("click", () => { levelKey = key; show("goal"); });
+  $("level-buttons").appendChild(b);
+}
+for (const g of GOALS) {
+  const b = document.createElement("button");
+  b.className = "btn"; b.textContent = g + " 点";
+  b.addEventListener("click", () => startGame(g));
+  $("goal-buttons").appendChild(b);
+}
+
+// ---------- ゲーム ----------
+function startGame(goal) {
+  session = newSession(byLevel[levelKey], goal);
+  $("goal").textContent = "(目標 " + goal + ")";
+  updateScore();
+  show("game");
+  showQuestion();
+}
+
+function updateScore() {
+  $("score").textContent = "ポイント: " + session.score;
+  const ratio = Math.max(0, Math.min(1, session.score / session.goal));
+  $("progress").style.width = (ratio * 100) + "%";
+}
+
+function showQuestion() {
+  clearTimeout(timer);
+  current = nextProblem(session);
+  $("qno").textContent = "第 " + session.count + " 問";
+  typeset($("problem"), current.problem_latex, current.problem_text, true);
+
+  choices = [{ tex: current.answer_latex, text: current.answer_text, ok: true }];
+  current.wrong_latex.forEach((tex, i) => choices.push({ tex, text: current.wrong_texts[i], ok: false }));
+  shuffle(choices);
+
+  const box = $("choices");
+  box.textContent = "";
+  choices.forEach((c, i) => {
+    const b = document.createElement("button");
+    b.className = "choice";
+    b.addEventListener("click", () => onChoice(i));
+    const span = document.createElement("span");
+    typeset(span, c.tex, c.text, false);
+    b.appendChild(span);
+    box.appendChild(b);
+  });
+  $("feedback").textContent = "";
+  $("feedback").className = "";
+  $("next").hidden = true;
+  locked = false;
+}
+
+function onChoice(i) {
+  if (locked) return;
+  locked = true;
+  const ok = choices[i].ok;
+  const cleared = applyAnswer(session, ok);
+  updateScore();
+
+  const buttons = $("choices").children;
+  choices.forEach((c, k) => { if (c.ok) buttons[k].classList.add("correct"); });
+  const fb = $("feedback");
+  if (ok) {
+    fb.textContent = "○ 正解!  +" + POINT;
+    fb.className = "ok";
+    timer = setTimeout(cleared ? gameClear : showQuestion, CORRECT_DELAY_MS);
+  } else {
+    buttons[i].classList.add("wrong");
+    fb.textContent = "× 不正解  -" + POINT + "  (緑色の選択肢が正解)";
+    fb.className = "ng";
+    if (cleared) timer = setTimeout(gameClear, CORRECT_DELAY_MS);   // 通常は起こらない
+    else { $("next").hidden = false; $("next").focus(); }
+  }
+}
+
+$("next").addEventListener("click", showQuestion);
+
+function stopGame() {            // 途中でやめてホームへ
+  clearTimeout(timer);
+  show("home");
+}
+$("stop").addEventListener("click", stopGame);
+
+function gameClear() {
+  clearTimeout(timer);
+  alert("ゲームクリア!\nおめでとう! " + session.goal + " 点に到達しました。\n挑戦した問題数: " + session.count + " 問");
+  show("home");
+}
+
+// キーボード: 1〜4 で選択、Enter で次へ
+document.addEventListener("keydown", (e) => {
+  if ($("screen-game").hidden) return;
+  if (e.key >= "1" && e.key <= "4") onChoice(Number(e.key) - 1);
+  else if (e.key === "Enter" && locked && !$("next").hidden) showQuestion();
+});
+</script>
+</body>
+</html>
